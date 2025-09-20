@@ -1,47 +1,22 @@
 {% extends 'base.html' %}
-{% from 'bootstrap/pagination.html' import render_pagination %}
-{% from 'macros.html' import photo_card, user_card with context %}
-
-{% block title %}Search: {{ q }}{% endblock %}
-
 {% block content %}
-    <div class="page-header">
-        <h1>Search: {{ q }}</h1>
-    </div>
+  <h2>Search results for "{{ q }}"</h2>
+  {% if photos %}
     <div class="row">
-        <div class="col-md-3">
-            <div class="nav nav-pills flex-column" role="tablist" aria-orientation="vertical">
-                <a class="nav-item nav-link {% if category == 'photo' %}active{% endif %}"
-                   href="{{ url_for('.search', q=q, category='photo') }}">Photo</a>
-                <a class="nav-item nav-link {% if category == 'user' %}active{% endif %}"
-                   href="{{ url_for('.search', q=q, category='user') }}">User</a>
-                <a class="nav-item nav-link {% if category == 'tag' %}active{% endif %}"
-                   href="{{ url_for('.search', q=q, category='tag') }}">Tag</a>
-            </div>
+      {% for photo in photos %}
+        <div class="col-sm-4" style="margin-bottom:1rem;">
+          <a href="{{ url_for('main.show_photo', photo_id=photo.id) }}">
+            <img class="img-fluid"
+                 src="{{ url_for('main.get_image', filename=photo.filename) }}"
+                 alt="{{ photo.alt_text or 'Photo' }}">
+          </a>
+          {% if photo.tags_ml %}
+            <div style="font-size:0.9em;color:#666;">ML tags: {{ photo.tags_ml }}</div>
+          {% endif %}
         </div>
-        <div class="col-md-9">
-            {% if results %}
-                <h5>{{ results|length }} results</h5>
-                {% for item in results %}
-                    {% if category == 'photo' %}
-                        {{ photo_card(item) }}
-                    {% elif category == 'user' %}
-                        {{ user_card(item) }}
-                    {% else %}
-                        <a class="badge badge-light" href="{{ url_for('.show_tag', tag_id=item.id) }}">
-                            {{ item.name }} {{ item.photos|length }}
-                        </a>
-                    {% endif %}
-                {% endfor %}
-
-            {% else %}
-                <h5 class="tip">No results.</h5>
-            {% endif %}
-        </div>
+      {% endfor %}
     </div>
-    {% if results %}
-        <div class="page-footer">
-            {{ render_pagination(pagination, align='right') }}
-        </div>
-    {% endif %}
+  {% else %}
+    <p>No matches.</p>
+  {% endif %}
 {% endblock %}

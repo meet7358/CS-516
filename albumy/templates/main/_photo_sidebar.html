@@ -34,6 +34,13 @@
                 {% if photo.description %}
                     {{ photo.description }}
                 {% endif %}
+                {% if photo.alt_text %}
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            <strong>AI Description:</strong> {{ photo.alt_text }}
+                        </small>
+                    </div>
+                {% endif %}
                 {% if current_user == photo.author %}
                     <a id="description-btn" href="#!">
                         <small><span class="oi oi-pencil"></span> edit description</small>
@@ -59,6 +66,16 @@
                            href="{{ url_for('.show_tag', tag_id=tag.id) }}" target="_blank"><span
                                 class="oi oi-tag"></span> {{ tag.name }}</a>
                     {% endfor %}
+                {% endif %}
+                {% if photo.tags_ml %}
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            <strong>AI Tags:</strong> 
+                            {% for tag in photo.tags_ml.split(',') %}
+                                <span class="badge badge-info">{{ tag.strip() }}</span>
+                            {% endfor %}
+                        </small>
+                    </div>
                 {% endif %}
                 {% if current_user == photo.author %}
                     <a id="tag-btn" href="#!">

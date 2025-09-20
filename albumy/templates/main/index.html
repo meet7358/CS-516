@@ -15,7 +15,8 @@
                             <a class="dead-link" href="{{ url_for('user.index', username=photo.author.username) }}">
                                 <img class="rounded img-fluid avatar-s profile-popover"
                                      data-href="{{ url_for('ajax.get_profile', user_id=photo.author.id) }}"
-                                     src="{{ url_for('main.get_avatar', filename=photo.author.avatar_m) }}">
+                                     src="{{ url_for('main.get_avatar', filename=photo.author.avatar_m) }}"
+                                     alt="{{ photo.author.name if photo.author else 'User' }}'s avatar">
                             </a>
                             <a class="profile-popover trend-card-avatar"
                                data-href="{{ url_for('ajax.get_profile', user_id=photo.author.id) }}"
@@ -30,9 +31,27 @@
                                 <a class="thumbnail" href="{{ url_for('.show_photo', photo_id=photo.id) }}"
                                    target="_blank">
                                     <img class="img-fluid"
-                                         src="{{ url_for('.get_image', filename=photo.filename_m) }}">
+                                         src="{{ url_for('.get_image', filename=photo.filename_m) }}"
+                                         alt="{{ photo.alt_text or 'Photo uploaded by ' ~ (photo.author.name if photo.author else 'user') }}">
                                 </a>
                             </div>
+                            {% if photo.alt_text %}
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <strong>AI Description:</strong> {{ photo.alt_text }}
+                                    </small>
+                                </div>
+                            {% endif %}
+                            {% if photo.tags_ml %}
+                                <div class="mt-1">
+                                    <small class="text-muted">
+                                        <strong>AI Tags:</strong> 
+                                        {% for tag in photo.tags_ml.split(',') %}
+                                            <span class="badge badge-info badge-sm">{{ tag.strip() }}</span>
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                            {% endif %}
                         </div>
                         <div class="card-footer">
                             <span class="oi oi-star"></span>

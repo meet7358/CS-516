@@ -234,6 +234,8 @@ class Photo(db.Model):
     can_comment = db.Column(db.Boolean, default=True)
     flag = db.Column(db.Integer, default=0)
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    alt_text = db.Column(db.Text, nullable=True)   # generated or user-provided
+    tags_ml = db.Column(db.Text, nullable=True)    # comma-separated ML tags for search
 
     author = db.relationship('User', back_populates='photos')
     comments = db.relationship('Comment', back_populates='photo', cascade='all')

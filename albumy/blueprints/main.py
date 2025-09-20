@@ -11,6 +11,8 @@ from flask import render_template, flash, redirect, url_for, current_app, \
     send_from_directory, request, abort, Blueprint
 from flask_login import login_required, current_user
 from sqlalchemy.sql.expression import func
+from sqlalchemy import or_
+from ml.vision import analyze_image_local_path, extract_alt_and_tags
 
 from albumy.decorators import confirm_required, permission_required
 from albumy.extensions import db
@@ -27,9 +29,13 @@ def index():
     if current_user.is_authenticated:
         page = request.args.get('page', 1, type=int)
         per_page = current_app.config['ALBUMY_PHOTO_PER_PAGE']
+        # Show photos from followed users OR current user's own photos
         pagination = Photo.query \
-            .join(Follow, Follow.followed_id == Photo.author_id) \
-            .filter(Follow.follower_id == current_user.id) \
+            .outerjoin(Follow, Follow.followed_id == Photo.author_id) \
+            .filter(
+                (Follow.follower_id == current_user.id) | 
+                (Photo.author_id == current_user.id)
+            ) \
             .order_by(Photo.timestamp.desc()) \
             .paginate(page, per_page)
         photos = pagination.items
@@ -48,22 +54,24 @@ def explore():
 
 @main_bp.route('/search')
 def search():
-    q = request.args.get('q', '').strip()
-    if q == '':
-        flash('Enter keyword about photo, user or tag.', 'warning')
-        return redirect_back()
+    q = request.args.get('q', '', type=str).strip()
+    if not q:
+        photos = Photo.query.order_by(Photo.timestamp.desc()).all()
+        return render_template('main/search.html', photos=photos, q=q)
 
-    category = request.args.get('category', 'photo')
-    page = request.args.get('page', 1, type=int)
-    per_page = current_app.config['ALBUMY_SEARCH_RESULT_PER_PAGE']
-    if category == 'user':
-        pagination = User.query.whooshee_search(q).paginate(page, per_page)
-    elif category == 'tag':
-        pagination = Tag.query.whooshee_search(q).paginate(page, per_page)
-    else:
-        pagination = Photo.query.whooshee_search(q).paginate(page, per_page)
-    results = pagination.items
-    return render_template('main/search.html', q=q, results=results, pagination=pagination, category=category)
+    terms = [t.lower() for t in q.replace(',', ' ').split() if t]
+    conds = []
+    for t in terms:
+        like = f"%{t}%"
+        if hasattr(Photo, "tags_ml"):
+            conds.append(Photo.tags_ml.ilike(like))
+        if hasattr(Photo, "description"):
+            conds.append(Photo.description.ilike(like))
+        if hasattr(Photo, "alt_text"):
+            conds.append(Photo.alt_text.ilike(like))
+
+    photos = Photo.query.filter(or_(*conds)).order_by(Photo.timestamp.desc()).all()
+    return render_template('main/search.html', photos=photos, q=q)
 
 
 @main_bp.route('/notifications')
@@ -120,19 +128,56 @@ def get_avatar(filename):
 @permission_required('UPLOAD')
 def upload():
     if request.method == 'POST' and 'file' in request.files:
-        f = request.files.get('file')
-        filename = rename_image(f.filename)
-        f.save(os.path.join(current_app.config['ALBUMY_UPLOAD_PATH'], filename))
-        filename_s = resize_image(f, filename, current_app.config['ALBUMY_PHOTO_SIZE']['small'])
-        filename_m = resize_image(f, filename, current_app.config['ALBUMY_PHOTO_SIZE']['medium'])
-        photo = Photo(
-            filename=filename,
-            filename_s=filename_s,
-            filename_m=filename_m,
-            author=current_user._get_current_object()
-        )
-        db.session.add(photo)
-        db.session.commit()
+        try:
+            f = request.files.get('file')
+            if not f or f.filename == '':
+                flash('No file selected.', 'error')
+                return render_template('main/upload.html')
+            
+            filename = rename_image(f.filename)
+            f.save(os.path.join(current_app.config['ALBUMY_UPLOAD_PATH'], filename))
+            
+            # Reset file pointer for resize operations
+            f.seek(0)
+            filename_s = resize_image(f, filename, current_app.config['ALBUMY_PHOTO_SIZE']['small'])
+            
+            f.seek(0)
+            filename_m = resize_image(f, filename, current_app.config['ALBUMY_PHOTO_SIZE']['medium'])
+            
+            photo = Photo(
+                filename=filename,
+                filename_s=filename_s,
+                filename_m=filename_m,
+                author=current_user._get_current_object()
+            )
+            db.session.add(photo)
+            
+            image_abs_path = os.path.join(current_app.config['ALBUMY_UPLOAD_PATH'], photo.filename)
+
+            try:
+                analysis = analyze_image_local_path(image_abs_path)
+                gen_alt, ml_tags = extract_alt_and_tags(analysis)
+
+                # Only auto-fill alt if user left it empty
+                if not getattr(photo, "alt_text", None) and gen_alt:
+                    photo.alt_text = gen_alt
+
+                if ml_tags:
+                    photo.tags_ml = ",".join(sorted(set(ml_tags)))
+            except Exception as e:
+                current_app.logger.exception("Vision analysis failed: %s", e)
+                flash('Photo uploaded but AI analysis failed. You can add description manually.', 'warning')
+            
+            db.session.commit()
+            flash('Photo uploaded successfully!', 'success')
+            return redirect(url_for('main.show_photo', photo_id=photo.id))
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.exception("Upload failed: %s", e)
+            flash('Upload failed. Please try again.', 'error')
+            return render_template('main/upload.html')
+    
     return render_template('main/upload.html')
 
 
